@@ -1,0 +1,107 @@
+#!/bin/bash
+###########config######################
+REAL_PATH_TO_PARENT_DIR=$(readlink -f $(dirname "$0"))
+PATH_TO_DIR_WITH_EXTENSION_SCRIPTS="${REAL_PATH_TO_PARENT_DIR}/ext"
+TERMINAL="${TERMINAL:-/bin/termite}"
+DYNAMIC_MENU="/bin/dmenu"
+DYNAMIC_MENU_LISTA="/bin/dmenu -i -l 19 -fn -xos4-terminus-medium-r-*-*-14-*"
+
+declare -A RUN_STRING
+RUN_STRING['vim']='dMenuExplorer "runInTmux vim"'
+RUN_STRING['vifm']='runInTmux vifm'
+RUN_STRING['cmus']='runInTmux cmus'
+RUN_STRING['tmux']='${TERMINAL} -e "tmux new-session"'
+RUN_STRING['termite']='termite -e "tmux new-session"'
+RUN_STRING['mupdf']='dMenuExplorer mupdf ".*\.pdf$"'
+RUN_STRING['mpv']='dMenuExplorer mpv'
+RUN_STRING['sxiv']='dMenuExplorer "sxiv -t" ".*\.\(jpg\|png\|gif\)$"'
+##########funcitions##########################
+
+# Function dMenuExplorer explore files with dmenu 
+# expect params:
+# $1  name-application for open files
+# $2  regular expression for filter files
+function dMenuExplorer
+{
+    EVAL_STRING="$1" # param $1 expect name-application
+    REGEX="${2:-.*}" # param $2 expect regular expression for filter files ( find -regex=${REGEX} )
+    # move to folders
+    cd ~
+    MENU_OUT="$(printf '%s\n'  'search_file' "$(ls -ap)" | ${DYNAMIC_MENU_LISTA})"
+    if [ '~' = "${MENU_OUT}" ];then
+        MENU_OUT="${HOME}"
+    fi
+    while [ -d  "${MENU_OUT}" ]
+    do
+        cd  "${MENU_OUT}"
+     MENU_OUT="$(printf '%s\n' 'search_file' "$(ls -ap)" | ${DYNAMIC_MENU_LISTA})"
+    done
+    # genertate string to eval
+    if [[ "*" == "${MENU_OUT}" ]];then
+        while read -d $'\0' FILE
+        do
+            EVAL_STRING="$EVAL_STRING $(printf '%q' "$FILE")"
+        done < <(find "${PWD}"/* -type f -regex "${REGEX}" -print0)
+    elif [ -f "${MENU_OUT}"  ];then
+        EVAL_STRING="${EVAL_STRING} ${PWD}/${MENU_OUT}"
+    elif [ "${MENU_OUT}" = 'search_file' ];then
+        EVAL_STRING="${EVAL_STRING} ${PWD}/$(find  * -type f -regex "${REGEX}"  | awk '{i=i+1}{print i" "$0}' | ${DYNAMIC_MENU_LISTA} | sed 's/^[0-9]* \(.*\)/\1/')"
+     fi
+
+         eval "${EVAL_STRING}"
+
+}
+# runInTemux 
+# expect param:
+#  $1 name-application
+#  $2 name-file to open in application
+function runInTmux {
+   ${TERMINAL} -e "tmux new-session ${1} ${2} ";
+}
+# function dmenu_path
+# list application 
+function dmenu_path {
+    cachedir=${XDG_CACHE_HOME:-"$HOME/.cache"}
+if [ -d "$cachedir" ]; then
+	cache=$cachedir/dmenu_run
+else
+	cache=$HOME/.dmenu_cache # if no xdg dir, fall back to dotfile in ~
+fi
+IFS=:
+if stest -dqr -n "$cache" $PATH; then
+	stest -flx $PATH | sort -u | tee "$cache"
+else
+	cat "$cache"
+fi
+}
+
+#############main################################
+# list all files with permision executable from ext
+SCRIPT_EXT="$(find ${PATH_TO_DIR_WITH_EXTENSION_SCRIPTS}/* -executable -type f)"
+# show extended script at begin list dmenu
+RUN=$((basename -a ${SCRIPT_EXT};  dmenu_path) | ${DYNAMIC_MENU} )
+# full path to script
+SCRIPT_EXT="$(printf '%s\n' "${SCRIPT_EXT}" | sed -n "/${RUN}/ p")"
+# run extended script
+if [ -f  "$SCRIPT_EXT" ];then
+    ${SCRIPT_EXT}
+    exit
+fi
+
+BIN=$(echo $RUN | awk '{ print $1 }')
+# test if bin exist 
+if  type "${BIN}" > /dev/null;then
+
+    #for key in "${!RUN_STRING[@]}"
+     #do
+            #if [[ "${BIN}" == "${key}" ]];then
+              #RUN="${RUN_STRING["${key}"]}"
+              #break
+        #fi
+    #done
+    if [ "${RUN_STRING["${BIN}"]}" ];then
+        eval "${RUN_STRING["${BIN}"]}"
+    else
+       eval "${RUN}"
+    fi
+fi

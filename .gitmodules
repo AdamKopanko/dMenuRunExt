@@ -1,0 +1,6 @@
+[submodule "ext/note"]
+	path = ext/note
+	url = https://github.com/AdamKopanko/note
+[submodule "ext/firebookmarks"]
+	path = ext/firebookmarks
+	url = https://github.com/AdamKopanko/firebookmarks
